@@ -109,7 +109,7 @@ module PairingOrganization
     end
 
     def evaluate_availability(time)
-      return "Booked" unless time.nil? || time == "Available"
+      return "Booked::#{time}" unless time.nil? || time == "Available"
       if time.nil?
         "Not_Available"
       else
@@ -151,10 +151,12 @@ module PairingOrganization
 
   class CreateIcalFiles
     attr_reader :contents,
+                :saved_events,
                 :cal
 
     def initialize(contents)
       @contents = contents
+      @saved_events = load_saved_contents
       @cal = Icalendar::Calendar.new
       make_events
       save_events
@@ -173,8 +175,49 @@ module PairingOrganization
 
     def save_events
       puts "Saving iCal events."
+      if saved_events.nil?
+        write_file(cal.to_ical + "X-WR-RELCALID")
+      else
+        write_file(update_events)
+      end
+    end
+
+    def load_saved_contents
+      return nil unless File.exist?("./temp/scripted.ics")
+      cal_events = File.read("./temp/scripted.ics")
+      Icalendar::Calendar.parse(cal_events).first
+    end
+
+    def update_events
+      rewrite_updates
+      saved_events.to_ical
+    end
+
+    def rewrite_updates
+      cal.events.each do |event|
+        if event_exists?(event)
+          change_event_summary(event)
+        else
+          saved_events.add_event(event)
+        end
+      end
+    end
+
+    def change_event_summary(event)
+      saved_events.events.each do |saved_event|
+        saved_event.summary = event.summary if saved_event.dtstart.to_s == event.dtstart.to_s
+      end
+    end
+
+    def event_exists?(event)
+      saved_events.events.any? do |saved_event|
+        saved_event.dtstart.to_s == event.dtstart.to_s
+      end
+    end
+
+    def write_file(contents_to_save)
       File.open("./temp/scripted.ics", "w") do |file|
-        file.write cal.to_ical
+        file.write contents_to_save
       end
     end
 
